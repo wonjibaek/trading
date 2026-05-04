@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Area,
   ReferenceLine,
-  Scatter
+  Brush
 } from 'recharts';
 import { Table as TableIcon, Activity, RefreshCw } from 'lucide-react';
 
@@ -78,8 +78,9 @@ const Candlestick = (props) => {
   const color = isUp ? '#10B981' : '#EF4444';
 
   const bodyHeight = Math.max(Math.abs(height), 2);
-  // y는 open/close 중 높은 값의 픽셀 위치임
-  // pixelRange는 1단위 가격당 픽셀 높이
+  
+  // 가격 범위를 60M ~ 160M으로 고정했을 때의 픽셀 비율 계산
+  // Recharts는 내부적으로 스케일링을 하므로 props로 넘어온 y, height를 최대한 활용합니다.
   const pixelRange = height / Math.max(Math.abs(open - close), 0.0001);
   const highY = y - (high - Math.max(open, close)) * pixelRange;
   const lowY = (y + height) + (Math.min(open, close) - low) * pixelRange;
@@ -104,7 +105,7 @@ const GuideCharts = ({ apiUrl }) => {
       const candleData = await candleRes.json();
       
       let formatted = candleData.map((c, i) => ({
-        x: i,
+        index: i,
         open: c.opening_price,
         high: c.high_price,
         low: c.low_price,
@@ -115,7 +116,7 @@ const GuideCharts = ({ apiUrl }) => {
       })).reverse();
       
       formatted = calculateIndicators(formatted);
-      setCandles(formatted.slice(-40));
+      setCandles(formatted);
 
       const obRes = await fetch(`${apiUrl}/market/orderbook`);
       const obData = await obRes.json();
@@ -129,92 +130,115 @@ const GuideCharts = ({ apiUrl }) => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [apiUrl]);
 
   return (
     <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: '2.5fr 1fr', marginBottom: '40px' }}>
       
-      <div className="glass-panel" style={{ padding: '24px', minHeight: '600px' }}>
+      <div className="glass-panel" style={{ padding: '24px', minHeight: '650px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 className="heading-gradient" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem' }}>
             <Activity size={20} className="text-profit" />
-            BTC/KRW 실시간 분석 가이드
+            업비트 스타일 실시간 통합 차트
           </h3>
           <button onClick={fetchData} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
 
-        <div style={{ width: '100%', height: '350px' }}>
+        {/* 윈도우 1: 메인 차트 (60M ~ 160M 고정 스케일) */}
+        <div style={{ width: '100%', height: '400px' }}>
           <ResponsiveContainer>
-            <ComposedChart data={candles} margin={{ top: 30, right: 30, left: 10, bottom: 0 }}>
+            <ComposedChart data={candles} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
               <XAxis dataKey="timestamp" hide />
               <YAxis 
-                domain={['auto', 'auto']}
+                domain={[60000000, 160000000]} 
+                ticks={[60000000, 80000000, 100000000, 120000000, 140000000, 160000000]}
                 orientation="right" 
                 tick={{fill: 'var(--text-muted)', fontSize: 10}} 
                 tickLine={false}
                 axisLine={false}
-                // 꼬리(High/Low)와 지표(Bollinger)값이 잘리지 않도록 강제 포함
-                allowDataOverflow={false}
+                tickFormatter={(val) => (val / 10000).toLocaleString() + '만'}
               />
               <Tooltip 
-                contentStyle={{ background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                itemStyle={{ fontSize: '0.7rem' }}
+                contentStyle={{ 
+                  background: 'rgba(255, 255, 255, 0.9)', 
+                  border: 'none', 
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                  color: '#000'
+                }}
+                itemStyle={{ color: '#000', fontWeight: '600', fontSize: '0.8rem' }}
+                labelStyle={{ color: '#666', marginBottom: '4px' }}
               />
-              
-              {/* 축 인식 범위 확장을 위한 더미 라인 (High/Low 인식용) */}
-              <Line dataKey="high" stroke="none" dot={false} connectNulls />
-              <Line dataKey="low" stroke="none" dot={false} connectNulls />
               
               <Area type="monotone" dataKey="bbUpper" stroke="none" fill="rgba(59, 130, 246, 0.04)" />
               <Area type="monotone" dataKey="bbLower" stroke="none" fill="rgba(59, 130, 246, 0.04)" />
               <Bar dataKey="volume" fill="rgba(255, 255, 255, 0.03)" barSize={20} />
-              <Bar dataKey="range" shape={<Candlestick />} name="Price" />
-              <Line type="monotone" dataKey="ema20" stroke="var(--accent-neon)" dot={false} strokeWidth={2} name="EMA 20" />
+              
+              {/* 축 인식 범위를 위한 더미 라인 (Brush 작동 및 축 고정 보조) */}
+              <Line dataKey="high" stroke="none" dot={false} />
+              <Line dataKey="low" stroke="none" dot={false} />
+
+              <Bar dataKey="range" shape={<Candlestick />} name="시가/종가" />
+              <Line type="monotone" dataKey="ema20" stroke="#00D2FF" dot={false} strokeWidth={2} name="EMA 20" />
               <Line type="monotone" dataKey="vwap" stroke="#F59E0B" dot={false} strokeWidth={1.5} name="VWAP" />
+              
+              {/* 확대/축소 브러쉬 추가 */}
+              <Brush 
+                dataKey="timestamp" 
+                height={30} 
+                stroke="rgba(255,255,255,0.1)" 
+                fill="rgba(0,0,0,0.2)"
+                startIndex={candles.length - 30}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
 
-        <div style={{ width: '100%', height: '120px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px' }}>
+        {/* 윈도우 2: RSI 차트 */}
+        <div style={{ width: '100%', height: '120px', marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '5px' }}>RSI (14)</div>
           <ResponsiveContainer>
             <ComposedChart data={candles}>
               <XAxis dataKey="timestamp" tick={{fill: 'var(--text-muted)', fontSize: 9}} tickLine={false} />
               <YAxis domain={[0, 100]} orientation="right" tick={{fill: 'var(--text-muted)', fontSize: 9}} ticks={[30, 70]} tickLine={false} axisLine={false} />
-              <Tooltip contentStyle={{ background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }} />
-              <ReferenceLine y={70} stroke="rgba(239, 68, 68, 0.2)" strokeDasharray="3 3" />
-              <ReferenceLine y={30} stroke="rgba(16, 185, 129, 0.2)" strokeDasharray="3 3" />
+              <Tooltip 
+                contentStyle={{ background: 'rgba(255, 255, 255, 0.9)', border: 'none', borderRadius: '8px', color: '#000' }}
+                itemStyle={{ color: '#000' }}
+              />
+              <ReferenceLine y={70} stroke="rgba(239, 68, 68, 0.3)" strokeDasharray="3 3" />
+              <ReferenceLine y={30} stroke="rgba(16, 185, 129, 0.3)" strokeDasharray="3 3" />
               <Line type="monotone" dataKey="rsi" stroke="#F59E0B" dot={false} strokeWidth={1.5} name="RSI" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
 
+      {/* 윈도우 3: 실시간 호가 */}
       <div className="glass-panel" style={{ padding: '20px', overflow: 'hidden' }}>
         <h3 className="heading-gradient" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '16px' }}>
           <TableIcon size={18} className="text-muted" />
-          실시간 호가창
+          실시간 호가 데이터
         </h3>
         
         {orderBook ? (
           <div style={{ fontSize: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column-reverse' }}>
-              {orderBook.orderbook_units.slice(0, 15).reverse().map((unit, i) => (
-                <div key={`ask-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '3px 0', color: '#EF4444', background: 'rgba(239, 68, 68, 0.03)' }}>
+              {orderBook.orderbook_units.slice(0, 12).reverse().map((unit, i) => (
+                <div key={`ask-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '4px 0', color: '#EF4444', background: 'rgba(239, 68, 68, 0.03)' }}>
                   <span style={{fontWeight: 'bold'}}>{unit.ask_price.toLocaleString()}</span>
                   <span style={{ textAlign: 'right', color: 'var(--text-main)' }}>{unit.ask_size.toFixed(3)}</span>
                 </div>
               ))}
-              <div style={{ padding: '4px', textAlign: 'center', background: 'rgba(255,255,255,0.05)', color: '#fff', fontWeight: 'bold', margin: '2px 0', fontSize: '0.85rem' }}>
+              <div style={{ padding: '6px', textAlign: 'center', background: 'rgba(255,255,255,0.05)', color: '#fff', fontWeight: 'bold', margin: '2px 0', fontSize: '0.85rem' }}>
                 {orderBook.orderbook_units[0].ask_price.toLocaleString()}
               </div>
-              {orderBook.orderbook_units.slice(0, 15).map((unit, i) => (
-                <div key={`bid-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '3px 0', color: '#10B981', background: 'rgba(16, 185, 129, 0.03)' }}>
+              {orderBook.orderbook_units.slice(0, 12).map((unit, i) => (
+                <div key={`bid-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '4px 0', color: '#10B981', background: 'rgba(16, 185, 129, 0.03)' }}>
                   <span style={{fontWeight: 'bold'}}>{unit.bid_price.toLocaleString()}</span>
                   <span style={{ textAlign: 'right', color: 'var(--text-main)' }}>{unit.bid_size.toFixed(3)}</span>
                 </div>
@@ -222,7 +246,7 @@ const GuideCharts = ({ apiUrl }) => {
             </div>
           </div>
         ) : (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: '100px' }}>로딩 중...</div>
+          <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: '100px' }}>...</div>
         )}
       </div>
 
