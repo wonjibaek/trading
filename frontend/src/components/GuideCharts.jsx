@@ -9,7 +9,8 @@ import {
   Tooltip,
   ResponsiveContainer,
   Area,
-  ReferenceLine
+  ReferenceLine,
+  Scatter
 } from 'recharts';
 import { Table as TableIcon, Activity, RefreshCw } from 'lucide-react';
 
@@ -21,7 +22,7 @@ const calculateIndicators = (data) => {
   if (data.length < 20) return data;
   const result = [...data];
 
-  // 1. EMA 20
+  // EMA 20
   const k = 2 / (20 + 1);
   let ema = result[0].close;
   for (let i = 0; i < result.length; i++) {
@@ -29,7 +30,7 @@ const calculateIndicators = (data) => {
     result[i].ema20 = ema;
   }
 
-  // 2. Bollinger Bands (20, 2)
+  // Bollinger Bands (20, 2)
   for (let i = 19; i < result.length; i++) {
     const slice = result.slice(i - 19, i + 1);
     const mean = slice.reduce((acc, curr) => acc + curr.close, 0) / 20;
@@ -38,14 +39,13 @@ const calculateIndicators = (data) => {
     result[i].bbLower = mean - (stdDev * 2);
   }
 
-  // 3. RSI 14
+  // RSI 14
   let gains = 0, losses = 0;
   for (let i = 1; i < 15; i++) {
     const diff = result[i].close - result[i-1].close;
     if (diff > 0) gains += diff; else losses -= diff;
   }
-  let avgGain = gains / 14;
-  let avgLoss = losses / 14;
+  let avgGain = gains / 14, avgLoss = losses / 14;
   for (let i = 15; i < result.length; i++) {
     const diff = result[i].close - result[i-1].close;
     const gain = diff > 0 ? diff : 0;
@@ -56,7 +56,7 @@ const calculateIndicators = (data) => {
     result[i].rsi = 100 - (100 / (1 + rs));
   }
 
-  // 4. VWAP
+  // VWAP
   let cumulativePV = 0, cumulativeV = 0;
   for (let i = 0; i < result.length; i++) {
     cumulativePV += result[i].close * result[i].volume;
@@ -78,13 +78,15 @@ const Candlestick = (props) => {
   const color = isUp ? '#10B981' : '#EF4444';
 
   const bodyHeight = Math.max(Math.abs(height), 2);
+  // y는 open/close 중 높은 값의 픽셀 위치임
+  // pixelRange는 1단위 가격당 픽셀 높이
   const pixelRange = height / Math.max(Math.abs(open - close), 0.0001);
   const highY = y - (high - Math.max(open, close)) * pixelRange;
   const lowY = (y + height) + (Math.min(open, close) - low) * pixelRange;
 
   return (
     <g>
-      <line x1={x + width / 2} y1={highY} x2={x + width / 2} y2={lowY} stroke={color} strokeWidth={1.2} />
+      <line x1={x + width / 2} y1={highY} x2={x + width / 2} y2={lowY} stroke={color} strokeWidth={1.5} />
       <rect x={x} y={y} width={width} height={bodyHeight} fill={color} />
     </g>
   );
@@ -145,27 +147,32 @@ const GuideCharts = ({ apiUrl }) => {
           </button>
         </div>
 
-        {/* 메인 차트: Y축 도메인에 넉넉한 여백(Padding) 추가 */}
         <div style={{ width: '100%', height: '350px' }}>
           <ResponsiveContainer>
-            <ComposedChart data={candles} margin={{ top: 20, right: 30, left: 10, bottom: 0 }}>
+            <ComposedChart data={candles} margin={{ top: 30, right: 30, left: 10, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
               <XAxis dataKey="timestamp" hide />
               <YAxis 
-                domain={[(dataMin) => dataMin * 0.995, (dataMax) => dataMax * 1.005]} 
+                domain={['auto', 'auto']}
                 orientation="right" 
                 tick={{fill: 'var(--text-muted)', fontSize: 10}} 
                 tickLine={false}
                 axisLine={false}
+                // 꼬리(High/Low)와 지표(Bollinger)값이 잘리지 않도록 강제 포함
+                allowDataOverflow={false}
               />
               <Tooltip 
                 contentStyle={{ background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                 itemStyle={{ fontSize: '0.7rem' }}
               />
               
+              {/* 축 인식 범위 확장을 위한 더미 라인 (High/Low 인식용) */}
+              <Line dataKey="high" stroke="none" dot={false} connectNulls />
+              <Line dataKey="low" stroke="none" dot={false} connectNulls />
+              
               <Area type="monotone" dataKey="bbUpper" stroke="none" fill="rgba(59, 130, 246, 0.04)" />
               <Area type="monotone" dataKey="bbLower" stroke="none" fill="rgba(59, 130, 246, 0.04)" />
-              <Bar dataKey="volume" fill="rgba(255, 255, 255, 0.04)" barSize={20} />
+              <Bar dataKey="volume" fill="rgba(255, 255, 255, 0.03)" barSize={20} />
               <Bar dataKey="range" shape={<Candlestick />} name="Price" />
               <Line type="monotone" dataKey="ema20" stroke="var(--accent-neon)" dot={false} strokeWidth={2} name="EMA 20" />
               <Line type="monotone" dataKey="vwap" stroke="#F59E0B" dot={false} strokeWidth={1.5} name="VWAP" />
@@ -173,7 +180,6 @@ const GuideCharts = ({ apiUrl }) => {
           </ResponsiveContainer>
         </div>
 
-        {/* RSI 보조 차트 */}
         <div style={{ width: '100%', height: '120px', marginTop: '10px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '5px' }}>RSI (14)</div>
           <ResponsiveContainer>
@@ -198,17 +204,17 @@ const GuideCharts = ({ apiUrl }) => {
         {orderBook ? (
           <div style={{ fontSize: '0.75rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column-reverse' }}>
-              {orderBook.orderbook_units.slice(0, 12).reverse().map((unit, i) => (
-                <div key={`ask-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '4px 0', color: '#EF4444', background: 'rgba(239, 68, 68, 0.03)' }}>
+              {orderBook.orderbook_units.slice(0, 15).reverse().map((unit, i) => (
+                <div key={`ask-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '3px 0', color: '#EF4444', background: 'rgba(239, 68, 68, 0.03)' }}>
                   <span style={{fontWeight: 'bold'}}>{unit.ask_price.toLocaleString()}</span>
                   <span style={{ textAlign: 'right', color: 'var(--text-main)' }}>{unit.ask_size.toFixed(3)}</span>
                 </div>
               ))}
-              <div style={{ padding: '6px', textAlign: 'center', background: 'rgba(255,255,255,0.05)', color: '#fff', fontWeight: 'bold', margin: '2px 0', fontSize: '0.85rem' }}>
+              <div style={{ padding: '4px', textAlign: 'center', background: 'rgba(255,255,255,0.05)', color: '#fff', fontWeight: 'bold', margin: '2px 0', fontSize: '0.85rem' }}>
                 {orderBook.orderbook_units[0].ask_price.toLocaleString()}
               </div>
-              {orderBook.orderbook_units.slice(0, 12).map((unit, i) => (
-                <div key={`bid-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '4px 0', color: '#10B981', background: 'rgba(16, 185, 129, 0.03)' }}>
+              {orderBook.orderbook_units.slice(0, 15).map((unit, i) => (
+                <div key={`bid-${i}`} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', padding: '3px 0', color: '#10B981', background: 'rgba(16, 185, 129, 0.03)' }}>
                   <span style={{fontWeight: 'bold'}}>{unit.bid_price.toLocaleString()}</span>
                   <span style={{ textAlign: 'right', color: 'var(--text-main)' }}>{unit.bid_size.toFixed(3)}</span>
                 </div>
