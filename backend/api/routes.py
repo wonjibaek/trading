@@ -1,4 +1,8 @@
+import json
+import traceback
 import httpx
+from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -48,79 +52,88 @@ async def create_trade(
 ):
     """새로운 트레이딩 기록을 생성하고 DB에 저장한 뒤 분석 결과를 반환합니다."""
     
-    trade_id = datetime.now().strftime("%Y%m%d%H%M%S")
-    
-    # 1. 계산 및 분석 로직
-    rr_value = calc_rr(side, entry, tp, sl)
-    
-    step_points, step_notes = grade_step_training(
-        trend_choice, structure_choice, candle_choice, 
-        volume_choice, indicator_choice, final_choice
-    )
-    
-    score, reason_points = emotion_score(
-        thesis, confidence, impatience, revenge, fomo, 
-        checklist_checked, rr_value, stop_defined
-    )
-    classification = classify_trade(score)
-    
-    feedback_text = build_feedback(
-        side, rr_value, score, reason_points, outcome, 
-        pnl_percent, step_points, step_notes
-    )
-    
-    # 2. 이미지 파일 저장 (로컬)
-    path15, path1h, path4h = None, None, None
-    if chart_15m:
-        ext = Path(chart_15m.filename).suffix
-        path15 = TradeRepository.save_uploaded_file(await chart_15m.read(), f"{trade_id}_15m{ext}")
-    if chart_1h:
-        ext = Path(chart_1h.filename).suffix
-        path1h = TradeRepository.save_uploaded_file(await chart_1h.read(), f"{trade_id}_1h{ext}")
-    if chart_4h:
-        ext = Path(chart_4h.filename).suffix
-        path4h = TradeRepository.save_uploaded_file(await chart_4h.read(), f"{trade_id}_4h{ext}")
+    try:
+        trade_id = datetime.now().strftime("%Y%m%d%H%M%S")
+        
+        # 1. 계산 및 분석 로직
+        rr_value = calc_rr(side, entry, tp, sl)
+        
+        step_points, step_notes = grade_step_training(
+            trend_choice, structure_choice, candle_choice, 
+            volume_choice, indicator_choice, final_choice
+        )
+        
+        score, reason_points = emotion_score(
+            thesis, confidence, impatience, revenge, fomo, 
+            checklist_checked, rr_value, stop_defined
+        )
+        classification = classify_trade(score)
+        
+        feedback_text = build_feedback(
+            side, rr_value, score, reason_points, outcome, 
+            pnl_percent, step_points, step_notes
+        )
+        
+        # 2. 이미지 파일 저장 (로컬) - 파일이 있을 때만 진행
+        path15, path1h, path4h = None, None, None
+        
+        async def handle_upload(file, prefix):
+            if file and file.filename:
+                content = await file.read()
+                if content:
+                    ext = Path(file.filename).suffix
+                    return TradeRepository.save_uploaded_file(content, f"{trade_id}_{prefix}{ext}")
+            return None
 
-    # 3. DB 저장을 위한 딕셔너리 준비
-    trade_item = {
-        "id": trade_id,
-        "title": title,
-        "side": side,
-        "entry": entry,
-        "tp": tp,
-        "sl": sl,
-        "rr": rr_value,
-        "thesis": thesis,
-        "confidence": confidence,
-        "impatience": impatience,
-        "revenge": revenge,
-        "fomo": fomo,
-        "checklist_checked": checklist_checked,
-        "stop_defined": stop_defined,
-        "outcome": outcome,
-        "pnl_percent": pnl_percent,
-        "reflection": reflection,
-        "score": score,
-        "classification": classification,
-        "reason_points": reason_points,
-        "feedback": feedback_text,
-        "step_points": step_points,
-        "step_notes": step_notes,
-        "trend_choice": trend_choice,
-        "structure_choice": structure_choice,
-        "candle_choice": candle_choice,
-        "volume_choice": volume_choice,
-        "indicator_choice": indicator_choice,
-        "final_choice": final_choice,
-        "chart_15m": path15,
-        "chart_1h": path1h,
-        "chart_4h": path4h,
-    }
+        path15 = await handle_upload(chart_15m, "15m")
+        path1h = await handle_upload(chart_1h, "1h")
+        path4h = await handle_upload(chart_4h, "4h")
 
-    # 4. MySQL(또는 SQLite)에 저장
-    saved_trade = TradeRepository.save_trade(db, trade_item)
-    
-    return saved_trade
+        # 3. DB 저장을 위한 딕셔너리 준비
+        trade_item = {
+            "id": trade_id,
+            "title": title,
+            "side": side,
+            "entry": entry,
+            "tp": tp,
+            "sl": sl,
+            "rr": rr_value,
+            "thesis": thesis,
+            "confidence": confidence,
+            "impatience": impatience,
+            "revenge": revenge,
+            "fomo": fomo,
+            "checklist_checked": checklist_checked,
+            "stop_defined": stop_defined,
+            "outcome": outcome,
+            "pnl_percent": pnl_percent,
+            "reflection": reflection,
+            "score": score,
+            "classification": classification,
+            "reason_points": reason_points,
+            "feedback": feedback_text,
+            "step_points": step_points,
+            "step_notes": step_notes,
+            "trend_choice": trend_choice,
+            "structure_choice": structure_choice,
+            "candle_choice": candle_choice,
+            "volume_choice": volume_choice,
+            "indicator_choice": indicator_choice,
+            "final_choice": final_choice,
+            "chart_15m": path15,
+            "chart_1h": path1h,
+            "chart_4h": path4h,
+        }
+
+        # 4. MySQL(또는 SQLite)에 저장
+        saved_trade = TradeRepository.save_trade(db, trade_item)
+        return saved_trade
+
+    except Exception as e:
+        # 에러 발생 시 서버 로그에 상세 정보 기록
+        print(f"Error in create_trade: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
 # 💹 Upbit Real-time Market Data Integration
