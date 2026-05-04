@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import TradeForm from './components/TradeForm'
 import FeedbackResult from './components/FeedbackResult'
+import GuideCharts from './components/GuideCharts'
 import './index.css'
 
 function App() {
@@ -8,17 +9,18 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const BASE_URL = "http://49.50.134.197:8000";
+
   // 이 함수가 자식 컴포넌트(TradeForm)에서 호출되어 백엔드로 데이터를 쏩니다.
   const handleTradeSubmit = async (formData) => {
     setIsLoading(true);
     setError(null);
     try {
-      // 🚨 나중에 실제 네이버 클라우드 서버 IP로 변경해야 합니다!
-      const API_URL = "http://49.50.134.197:8000/api/trades"; 
+      const API_URL = `${BASE_URL}/api/trades`; 
       
       const response = await fetch(API_URL, {
         method: "POST",
-        body: formData, // FormData 객체를 그대로 전송 (멀티파트)
+        body: formData, 
       });
 
       if (!response.ok) {
@@ -40,7 +42,7 @@ function App() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: '800px', margin: '0 auto', padding: '40px 20px' }}>
+    <div className="container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '40px 20px' }}>
       <header style={{ textAlign: 'center', marginBottom: '40px' }} className="animate-slide-up">
         <h1 className="heading-gradient" style={{ fontSize: '2.5rem', marginBottom: '8px' }}>
           Trading Insight Pro
@@ -56,6 +58,7 @@ function App() {
 
       {!feedback ? (
         <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <GuideCharts apiUrl={`${BASE_URL}/api`} />
           <TradeForm onSubmit={handleTradeSubmit} isLoading={isLoading} />
         </div>
       ) : (

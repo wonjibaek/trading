@@ -1,6 +1,4 @@
-import json
-from datetime import datetime
-from pathlib import Path
+import httpx
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -123,3 +121,39 @@ async def create_trade(
     saved_trade = TradeRepository.save_trade(db, trade_item)
     
     return saved_trade
+
+# =============================================================================
+# 💹 Upbit Real-time Market Data Integration
+# =============================================================================
+
+UPBIT_API_URL = "https://api.upbit.com/v1"
+
+@router.get("/market/candles")
+async def get_upbit_candles(market: str = "KRW-BTC", count: int = 24):
+    """업비트 캔들 데이터 가져오기 (1시간봉 기준)"""
+    async with httpx.AsyncClient() as client:
+        try:
+            # 1시간봉(minutes/60) 데이터를 가져옵니다.
+            response = await client.get(
+                f"{UPBIT_API_URL}/candles/minutes/60",
+                params={"market": market, "count": count}
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Upbit API Error: {str(e)}")
+
+@router.get("/market/orderbook")
+async def get_upbit_orderbook(market: str = "KRW-BTC"):
+    """업비트 호가창 데이터 가져오기"""
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{UPBIT_API_URL}/orderbook",
+                params={"markets": market}
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data[0] if data else {}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Upbit API Error: {str(e)}")
