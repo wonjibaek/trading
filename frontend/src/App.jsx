@@ -9,14 +9,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const BASE_URL = "http://49.50.134.197:8000";
-
-  // 이 함수가 자식 컴포넌트(TradeForm)에서 호출되어 백엔드로 데이터를 쏩니다.
-  const handleTradeSubmit = async (formData) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const API_URL = `${BASE_URL}/api/trades`; 
+  // 현재 브라우저의 주소(IP)를 자동으로 알아내어 백엔드 주소로 사용합니다.
+  const BASE_URL = window.location.origin;
+  const API_URL = `${BASE_URL}/api/trades`; 
       
       const response = await fetch(API_URL, {
         method: "POST",
