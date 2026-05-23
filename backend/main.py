@@ -28,6 +28,5 @@ app.include_router(router, prefix="/api")
 
 # API 라우터 외의 모든 요청은 React 앱(dist)을 보여주도록 설정
 # 주의: 이 코드는 항상 최하단에 위치해야 합니다.
-app.mount("/", StaticFiles(directory="../frontend/dist", html=True), name="frontend")
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+
