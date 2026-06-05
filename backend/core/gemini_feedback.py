@@ -1,11 +1,13 @@
 import os
 import asyncio
+from pathlib import Path
 import google.generativeai as genai
 from dotenv import load_dotenv
 from backend.core.logic import build_feedback
 
-# .env 파일 로드
-load_dotenv()
+# 프로젝트 루트의 .env 파일을 절대 경로로 찾아서 로드
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # API 키 설정
 api_key = os.getenv("GEMINI_API_KEY")
