@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from backend.schemas.trade import TradeResponse
 from backend.core.logic import (
     calc_rr, emotion_score, classify_trade, 
-    grade_step_training, build_feedback
+    grade_step_training
 )
+from backend.core.gemini_feedback import generate_ai_feedback
 from backend.database.repository import TradeRepository
 from backend.database.db_setup import get_db
 
@@ -69,10 +70,30 @@ async def create_trade(
         )
         classification = classify_trade(score)
         
-        feedback_text = build_feedback(
-            side, rr_value, score, reason_points, outcome, 
-            pnl_percent, step_points, step_notes
-        )
+        # 1.5. Gemini 피드백 생성용 데이터 딕셔너리 구성 및 호출
+        trade_data_for_ai = {
+            "side": side,
+            "entry": entry,
+            "tp": tp,
+            "sl": sl,
+            "rr": rr_value,
+            "stop_defined": stop_defined,
+            "outcome": outcome,
+            "pnl_percent": pnl_percent,
+            "thesis": thesis,
+            "reflection": reflection,
+            "score": score,
+            "classification": classification,
+            "confidence": confidence,
+            "impatience": impatience,
+            "revenge": revenge,
+            "fomo": fomo,
+            "reason_points": reason_points,
+            "step_points": step_points,
+            "step_notes": step_notes
+        }
+        
+        feedback_text = await generate_ai_feedback(trade_data_for_ai)
         
         # 2. 이미지 파일 저장 (로컬) - 파일이 있을 때만 진행
         path15, path1h, path4h = None, None, None
